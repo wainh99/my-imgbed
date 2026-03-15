@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>R2图床</title>
+<style>
+/* 基础样式 */
+*{box-sizing:border-box;margin:0;padding:0;font-family:"Microsoft Yahei",sans-serif}
+body{max-width:1200px;margin:2rem auto;padding:0 1rem;background:#f8f9fa}
+.container{background:white;padding:2rem;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,0.05)}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem}
+.logout-btn{background:#dc3545;color:white;border:none;padding:0.5rem 1rem;border-radius:6px;cursor:pointer}
+
+/* 批量操作 */
+.batch-actions{display:flex;justify-content:space-between;align-items:center;padding:1rem 0;border-bottom:1px solid #eee;margin-bottom:1rem}
+.batch-left{display:flex;align-items:center;gap:1rem}
+.batch-delete-btn{background:#dc3545;color:white;border:none;padding:0.5rem 1rem;border-radius:6px;opacity:0.6;pointer-events:none}
+.batch-delete-btn.enabled{opacity:1;pointer-events:auto}
+
+/* 上传区域 */
+.upload-area{border:2px dashed #dee2e6;padding:3rem 2rem;text-align:center;border-radius:8px;margin-bottom:2rem}
+#fileInput{display:none}
+.upload-btn{background:#0d6efd;color:white;border:none;padding:0.75rem 1.5rem;border-radius:6px;cursor:pointer}
+
+/* 图片列表 */
+.images{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1.5rem}
+.img-card{border:1px solid #eee;border-radius:8px;overflow:hidden;position:relative}
+.img-checkbox{position:absolute;top:0.5rem;left:0.5rem;width:1.2rem;height:1.2rem;z-index:10}
+.img-card img{width:100%;height:180px;object-fit:cover}
+.img-info{padding:1rem;position:relative}
+.img-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:0.5rem}
+
+/* 按钮组 */
+.btn-group{display:flex;gap:0.5rem}
+.copy-btn{flex:1;padding:0.5rem;background:#28a745;color:white;border:none;border-radius:4px;cursor:pointer;position:relative;overflow:hidden}
+.copy-btn:hover{background:#218838}
+.delete-btn{flex:1;padding:0.5rem;background:#dc3545;color:white;border:none;border-radius:4px;cursor:pointer}
+.delete-btn:hover{background:#bb2d3b}
+
+/* 复制成功提示（替代弹窗） */
+.copy-toast{position:absolute;top:-30px;left:50%;transform:translateX(-50%);background:#28a745;color:white;padding:0.3rem 0.8rem;border-radius:4px;font-size:0.8rem;opacity:0;transition:opacity 0.3s, top 0.3s;z-index:999}
+.copy-toast.show{opacity:1;top:-25px}
+
+/* 分页样式 */
+.pagination{margin-top:2rem;display:flex;justify-content:center;align-items:center;gap:0.5rem}
+.page-btn{padding:0.5rem 1rem;border:1px solid #ddd;background:white;border-radius:4px;cursor:pointer}
+.page-btn.active{background:#0d6efd;color:white;border-color:#0d6efd}
+.page-btn:disabled{opacity:0.5;cursor:not-allowed}
+
+/* 加载提示 */
+.loading{text-align:center;padding:2rem;grid-column:1/-1;color:#6c757d}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>R2 图床</h1>
+    <button class="logout-btn" onclick="logout()">退出登录</button>
+  </div>
+
+  <div class="batch-actions">
+    <div class="batch-left">
+      <label><input type="checkbox" id="selectAll" onchange="doSelectAll()"> 全选当前页</label>
+      <span>已选：<span id="selCount">0</span> 张</span>
+    </div>
+    <button class="batch-delete-btn" id="batchDelBtn" onclick="batchDelete()">批量删除</button>
+  </div>
+
+  <div class="upload-area">
+    <p>点击或拖拽上传</p>
+    <input type="file" id="fileInput" multiple accept="image/*">
+    <button class="upload-btn" onclick="document.getElementById('fileInput').click()">选择图片</button>
+  </div>
+
+  <div id="images" class="images"></div>
+  <div class="pagination" id="pagination"></div>
+</div>
+
+<script>
+const fileInput = document.getElementById('fileInput');
+const imagesEl = document.getElementById('images');
+const paginationEl = document.getElementById('pagination');
+const selectAllBox = document.getElementById('selectAll');
+const selCountEl = document.getElementById('selCount');
+const batchDelBtn = document.getElementById('batchDelBtn');
+
+let allImages = [];
+let page = 1;
+const pageSize = 20;
+let selected = new Set();
+
+// 上传功能
+fileInput.onchange = async e => {
+  const fd = new FormData();
+  Array.from(e.target.files).forEach(f => fd.append('file', f));
+  try {
+    const r = await fetch('/api/upload', {method:'POST', body:fd});
+    if(r.status===401){alert('请先登录');location.reload()}
+    const d = await r.json();
+    d.success ? loadImages() : alert('上传失败：'+d.error)
+  }catch(e){alert('网络错误：'+e.message)}
+}
+
+// 加载图片列表
+async function loadImages(){
+  selected.clear();
+  updateSelUI();
+  imagesEl.innerHTML='<div class="loading">加载中...</div>';
+  try{
+    const r = await fetch('/api/list');
+    if(r.status===401){alert('请先登录');location.reload()}
+    const d = await r.json();
+    if(d.success){
+      allImages = d.data;
+      renderPage();
+      renderPages();
+    }else{
+      imagesEl.innerHTML='<div class="loading">暂无图片</div>'
+    }
+  }catch(e){
+    imagesEl.innerHTML='<div class="loading">加载失败，请刷新重试</div>'
+  }
+}
+
+// 渲染当前页图片（核心优化：复制地址自动跟随域名）
+function renderPage(){
+  const start = (page-1)*pageSize;
+  const list = allImages.slice(start, start+pageSize);
+  
+  if(list.length===0){
+    imagesEl.innerHTML='<div class="loading">当前页无图片</div>';
+    return;
+  }
+
+  // 渲染图片卡片
+  imagesEl.innerHTML = list.map(img=>{
+    // 解析图片key（自动适配自定义域名）
+    const urlObj = new URL(img.url);
+    const key = urlObj.pathname.replace(/^\//,'');
+    // 生成当前域名的图片地址（核心：跟随自定义域名）
+    const imgUrl = `${window.location.origin}/${key}`;
+    const chk = selected.has(key)?'checked':'';
+    
+    return `
+      <div class="img-card" data-key="${key}">
+        <input type="checkbox" class="img-checkbox" ${chk} onchange="toggleOne('${key}',this.checked)">
+        <img src="${imgUrl}" alt="${img.name}">
+        <div class="img-info">
+          <div class="img-name" title="${img.name}">${img.name}</div>
+          <div class="btn-group">
+            <!-- 新增复制提示容器 -->
+            <div class="copy-toast">复制成功 ✔</div>
+            <button class="copy-btn" onclick="copy('${imgUrl}', this)">复制链接</button>
+            <button class="delete-btn" onclick="delOne('${key}')">删除</button>
+          </div>
+        </div>
+      </div>
+    `}).join('');
+}
+
+// 渲染分页
+function renderPages(){
+  const total = Math.ceil(allImages.length/pageSize);
+  paginationEl.innerHTML='';
+  
+  // 上一页
+  const prev = document.createElement('button');
+  prev.className='page-btn';
+  prev.innerText='上一页';
+  prev.disabled=page===1;
+  prev.onclick=()=>{page--;renderPage();renderPages()};
+  paginationEl.appendChild(prev);
+  
+  // 页码
+  for(let i=1;i<=total;i++){
+    const b=document.createElement('button');
+    b.className='page-btn '+(i===page?'active':'');
+    b.innerText=i;
+    b.onclick=()=>{page=i;renderPage();renderPages()};
+    paginationEl.appendChild(b);
+  }
+  
+  // 下一页
+  const next=document.createElement('button');
+  next.className='page-btn';
+  next.innerText='下一页';
+  next.disabled=page===total||total===0;
+  next.onclick=()=>{page++;renderPage();renderPages()};
+  paginationEl.appendChild(next);
+}
+
+// 单选图片
+function toggleOne(key,checked){
+  checked ? selected.add(key) : selected.delete(key);
+  updateSelUI();
+}
+
+// 更新选中数量UI
+function updateSelUI(){
+  selCountEl.innerText = selected.size;
+  selected.size>0 ? batchDelBtn.classList.add('enabled') : batchDelBtn.classList.remove('enabled');
+}
+
+// 全选当前页
+function doSelectAll(){
+  const checked = selectAllBox.checked;
+  const items = document.querySelectorAll('.img-card');
+  items.forEach(item=>{
+    const key = item.dataset.key;
+    const cb = item.querySelector('.img-checkbox');
+    cb.checked = checked;
+    if(checked) selected.add(key);
+    else selected.delete(key);
+  });
+  updateSelUI();
+}
+
+// 复制链接（核心优化：无弹窗+悬浮提示+自动适配域名）
+function copy(imgUrl, btn) {
+  // 复制到剪贴板
+  navigator.clipboard.writeText(imgUrl).then(()=>{
+    // 显示悬浮提示
+    const toast = btn.parentElement.querySelector('.copy-toast');
+    toast.classList.add('show');
+    // 2秒后隐藏提示
+    setTimeout(()=>{
+      toast.classList.remove('show');
+    }, 2000);
+  }).catch(()=>{
+    // 降级方案（兼容旧浏览器）
+    const input = document.createElement('input');
+    input.value = imgUrl;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    document.body.removeChild(input);
+    
+    // 仍显示悬浮提示
+    const toast = btn.parentElement.querySelector('.copy-toast');
+    toast.classList.add('show');
+    setTimeout(()=>{
+      toast.classList.remove('show');
+    }, 2000);
+  });
+}
+
+// 删除单张图片
+async function delOne(key){
+  if(!confirm('确定删除这张图片吗？删除后无法恢复！'))return;
+  try{
+    const r = await fetch('/api/delete',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:key})
+    });
+    if(r.status===401){alert('请先登录');location.reload()}
+    loadImages();
+  }catch(e){
+    alert('删除失败：网络错误')
+  }
+}
+
+// 批量删除
+async function batchDelete(){
+  const arr = Array.from(selected);
+  if(arr.length===0)return;
+  if(!confirm(`确定删除选中的 ${arr.length} 张图片吗？删除后无法恢复！`))return;
+  
+  try{
+    let success = 0, fail = 0;
+    for(const k of arr) {
+      const r = await fetch('/api/delete',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({key:k})
+      });
+      r.ok ? success++ : fail++;
+    }
+    alert(`批量删除完成！成功：${success} 张，失败：${fail} 张`);
+    loadImages();
+  }catch(e){
+    alert('批量删除失败：网络错误')
+  }
+}
+
+// 退出登录
+function logout(){
+  if(confirm('确定要退出登录吗？')){
+    document.cookie="img_bed_verified=;Path=/;Max-Age=0";
+    location.reload(true);
+  }
+}
+
+// 页面加载初始化
+window.onload = loadImages;
+</script>
+</body>
+</html>
