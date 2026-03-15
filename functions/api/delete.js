@@ -15,12 +15,19 @@ export async function onRequestPost(context) {
     const data = await request.json();
     const { key } = data;
 
-    if (!key || !key.startsWith('uploads/')) {
-      return new Response(JSON.stringify({ error: '无效的图片路径' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+// 先去掉key开头的/，再校验
+const cleanKey = key.startsWith('/') ? key.slice(1) : key;
+if (!cleanKey || !cleanKey.startsWith('uploads/')) {
+  return new Response(JSON.stringify({ error: `无效的图片路径（仅支持删除uploads/前缀的文件），当前key：${cleanKey}` }), {
+    status: 400,
+    headers: { 
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*'
     }
+  });
+}
+// 后续删除用 cleanKey
+await env.MY_IMG_BED.delete(cleanKey);
 
     // 3. 删除R2中的图片
     await env.MY_IMG_BED.delete(key);
