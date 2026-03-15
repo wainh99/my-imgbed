@@ -21,11 +21,22 @@ export async function onRequestPost(context) {
       });
     }
 
+    // 先校验关键变量是否存在（新增：修复 undefined 报错）
+    if (!env.MY_IMG_BED || !env.PUBLIC_R2_URL) {
+      return new Response(JSON.stringify({ error: 'R2 配置错误，请检查绑定和环境变量' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     const uploaded = [];
     // 遍历上传文件
     for (const file of files) {
-      // 仅允许图片类型
+      // 新增：空值校验 + 更宽松的图片判断
+      if (!file || !file.name || !file.type) continue;
+      // 校验图片类型（增加空值保护）
       if (!file.type.startsWith('image/')) continue;
+      
       // 生成唯一文件名（避免重复）
       const fileName = file.name.replace(/[^a-zA-Z0-9_\.\-]/g, ''); // 过滤特殊字符
       const key = `uploads/${Date.now()}-${fileName}`;
@@ -48,6 +59,8 @@ export async function onRequestPost(context) {
       }
     });
   } catch (error) {
+    // 新增：打印详细错误（方便排查）
+    console.error('上传接口错误：', error);
     return new Response(JSON.stringify({ error: '上传失败：' + error.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
