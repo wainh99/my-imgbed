@@ -178,7 +178,10 @@
         if (data.success && data.data.length > 0) {
           imagesEl.innerHTML = data.data.map(img => {
             // 从url解析出R2的key（uploads/xxx.jpg）
-            const key = img.url.replace(`${window.location.origin.replace(/^https?:\/\//, '')}/`, '').replace(`${new URL(img.url).hostname}/`, '');
+          // 精准解析 R2 key：从图片URL中提取 "uploads/" 开头的部分
+            const urlObj = new URL(img.url);
+            const pathname = urlObj.pathname; // 获取URL路径（比如 "/uploads/123.jpg"）
+              const key = pathname.startsWith('/') ? pathname.slice(1) : pathname; // 去掉开头的 "/"，得到 "uploads/123.jpg"
             return `
               <div class="img-card">
                 <img src="${img.url}" alt="${img.name}" loading="lazy">
