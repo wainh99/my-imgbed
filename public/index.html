@@ -8,7 +8,18 @@
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: "Microsoft Yahei", sans-serif; }
     body { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; background: #f8f9fa; }
     .container { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-    h1 { text-align: center; color: #333; margin-bottom: 2rem; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+    h1 { color: #333; margin: 0; }
+    .logout-btn { 
+      background: #dc3545; 
+      color: white; 
+      border: none; 
+      padding: 0.5rem 1rem; 
+      border-radius: 6px; 
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .logout-btn:hover { background: #bb2d3b; }
     
     /* 上传区域 */
     .upload-area { 
@@ -64,8 +75,9 @@
       margin-bottom: 0.5rem;
     }
     .img-size { color: #6c757d; font-size: 0.8rem; margin-bottom: 0.8rem; }
+    .btn-group { display: flex; gap: 0.5rem; }
     .copy-btn { 
-      width: 100%;
+      flex: 1;
       padding: 0.5rem; 
       background: #28a745; 
       color: white; 
@@ -75,6 +87,17 @@
       font-size: 0.9rem;
     }
     .copy-btn:hover { background: #218838; }
+    .delete-btn { 
+      flex: 1;
+      padding: 0.5rem; 
+      background: #dc3545; 
+      color: white; 
+      border: none; 
+      border-radius: 4px; 
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .delete-btn:hover { background: #bb2d3b; }
     
     /* 加载提示 */
     .loading { text-align: center; color: #6c757d; padding: 2rem; }
@@ -82,7 +105,11 @@
 </head>
 <body>
   <div class="container">
-    <h1>极简 R2 图床</h1>
+    <!-- 新增头部：标题 + 退出按钮 -->
+    <div class="header">
+      <h1>极简 R2 图床</h1>
+      <button class="logout-btn" onclick="logout()">退出登录</button>
+    </div>
     
     <!-- 上传区域 -->
     <div class="upload-area" id="uploadArea">
@@ -102,7 +129,7 @@
     const fileInput = document.getElementById('fileInput');
     const imagesEl = document.getElementById('images');
 
-    // 上传图片
+    // 1. 上传图片（优化密码错误提示）
     async function uploadFiles(files) {
       if (files.length === 0) return;
       
@@ -114,6 +141,14 @@
           method: 'POST', 
           body: formData 
         });
+        
+        // 捕获401未授权（密码错误/未登录）
+        if (res.status === 401) {
+          alert('请先输入正确的访问密码！');
+          window.location.reload();
+          return;
+        }
+
         const data = await res.json();
         if (data.success) {
           loadImages(); // 上传成功后刷新列表
@@ -125,24 +160,39 @@
       }
     }
 
-    // 加载所有图片列表
+    // 2. 加载所有图片列表（优化密码错误提示）
     async function loadImages() {
       imagesEl.innerHTML = '<div class="loading">加载中...</div>';
       try {
         const res = await fetch('/api/list');
+        
+        // 捕获401未授权
+        if (res.status === 401) {
+          alert('请先输入正确的访问密码！');
+          window.location.reload();
+          return;
+        }
+
         const data = await res.json();
         
         if (data.success && data.data.length > 0) {
-          imagesEl.innerHTML = data.data.map(img => `
-            <div class="img-card">
-              <img src="${img.url}" alt="${img.name}" loading="lazy">
-              <div class="img-info">
-                <div class="img-name" title="${img.name}">${img.name}</div>
-                <div class="img-size">${img.size} · ${img.uploaded}</div>
-                <button class="copy-btn" onclick="copy('${img.url}')">复制图片链接</button>
+          imagesEl.innerHTML = data.data.map(img => {
+            // 从url解析出R2的key（uploads/xxx.jpg）
+            const key = img.url.replace(`${window.location.origin.replace(/^https?:\/\//, '')}/`, '').replace(`${new URL(img.url).hostname}/`, '');
+            return `
+              <div class="img-card">
+                <img src="${img.url}" alt="${img.name}" loading="lazy">
+                <div class="img-info">
+                  <div class="img-name" title="${img.name}">${img.name}</div>
+                  <div class="img-size">${img.size} · ${img.uploaded}</div>
+                  <div class="btn-group">
+                    <button class="copy-btn" onclick="copy('${img.url}')">复制链接</button>
+                    <button class="delete-btn" onclick="deleteImage('${key}')">删除</button>
+                  </div>
+                </div>
               </div>
-            </div>
-          `).join('');
+            `;
+          }).join('');
         } else {
           imagesEl.innerHTML = '<div class="loading">暂无上传的图片</div>';
         }
@@ -152,12 +202,11 @@
       }
     }
 
-    // 复制链接
+    // 3. 复制链接
     function copy(text) {
       navigator.clipboard.writeText(text).then(() => {
         alert('图片链接已复制！');
       }).catch(() => {
-        // 降级方案：手动选中
         const input = document.createElement('input');
         input.value = text;
         document.body.appendChild(input);
@@ -168,14 +217,58 @@
       });
     }
 
-    // 绑定事件
+    // 4. 删除图片（新增功能）
+    async function deleteImage(key) {
+      if (!confirm('确定要删除这张图片吗？删除后无法恢复！')) {
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/delete', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ key })
+        });
+
+        // 捕获401未授权
+        if (res.status === 401) {
+          alert('请先输入正确的访问密码！');
+          window.location.reload();
+          return;
+        }
+
+        const data = await res.json();
+        if (data.success) {
+          alert('删除成功！');
+          loadImages(); // 刷新列表
+        } else {
+          alert('删除失败：' + data.error);
+        }
+      } catch (error) {
+        alert('删除失败：网络错误');
+        console.error('删除图片错误：', error);
+      }
+    }
+
+    // 5. 退出登录（新增功能）
+    function logout() {
+      if (confirm('确定要退出登录吗？')) {
+        // 清除验证Cookie
+        document.cookie = "img_bed_verified=; Path=/; Max-Age=0";
+        // 刷新页面回到密码输入页
+        window.location.reload();
+      }
+    }
+
+    // 绑定事件（移除uploadArea点击事件，解决两次弹窗）
     fileInput.addEventListener('change', e => uploadFiles(e.target.files));
     uploadArea.addEventListener('dragover', e => e.preventDefault());
     uploadArea.addEventListener('drop', e => {
       e.preventDefault();
       uploadFiles(e.dataTransfer.files);
     });
-    // uploadArea.addEventListener('click', () => fileInput.click());
 
     // 页面加载时初始化列表
     window.onload = loadImages;
