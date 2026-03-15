@@ -3,219 +3,583 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>R2图床 - 分页版</title>
+  <title>R2 图床 </title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: "Microsoft Yahei", sans-serif; }
     body { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; background: #f8f9fa; }
     .container { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
     
+    /* 头部 */
     .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-    h1 { color: #333; }
-    .logout-btn { background: #dc3545; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; }
+    h1 { color: #333; font-size: 1.8rem; }
+    .logout-btn { 
+      background: #dc3545; 
+      color: white; 
+      border: none; 
+      padding: 0.5rem 1rem; 
+      border-radius: 6px; 
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .logout-btn:hover { background: #bb2d3b; }
     
-    /* 批量栏 */
-    .batch-actions { display: flex; justify-content: space-between; align-items: center; padding: 1rem 0; border-bottom: 1px solid #eee; margin-bottom:1rem; }
-    .batch-left { display: flex; align-items: center; gap: 1rem; }
-    .batch-delete-btn { background: #dc3545; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; opacity: 0.6; pointer-events: none; }
-    .batch-delete-btn.enabled { opacity:1; pointer-events:auto; }
+    /* 批量操作栏 */
+    .batch-actions { 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center; 
+      padding: 1rem 0; 
+      border-bottom: 1px solid #eee; 
+      margin-bottom: 1rem;
+    }
+    .batch-left { display: flex; align-items: center; gap: 1.5rem; }
+    .batch-select-all { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
+    .batch-count { color: #6c757d; }
+    .batch-delete-btn { 
+      background: #dc3545; 
+      color: white; 
+      border: none; 
+      padding: 0.5rem 1rem; 
+      border-radius: 6px; 
+      cursor: pointer;
+      font-size: 0.9rem;
+      opacity: 0.6; 
+      pointer-events: none;
+    }
+    .batch-delete-btn.enabled { 
+      opacity: 1; 
+      pointer-events: auto;
+    }
+    .batch-delete-btn.enabled:hover { background: #bb2d3b; }
 
-    /* 上传 */
-    .upload-area { border: 2px dashed #dee2e6; padding: 3rem 2rem; text-align: center; border-radius: 8px; margin-bottom: 2rem; }
+    /* 上传区域 */
+    .upload-area { 
+      border: 2px dashed #dee2e6; 
+      padding: 3rem 2rem; 
+      text-align: center; 
+      border-radius: 8px; 
+      margin-bottom: 2rem;
+      cursor: pointer;
+      transition: border-color 0.3s;
+    }
+    .upload-area:hover { border-color: #0d6efd; }
+    .upload-area p { color: #6c757d; margin-bottom: 1rem; font-size: 1rem; }
     #fileInput { display: none; }
-    .upload-btn { background: #0d6efd; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 6px; cursor: pointer; }
+    .upload-btn { 
+      background: #0d6efd; 
+      color: white; 
+      border: none; 
+      padding: 0.75rem 1.5rem; 
+      border-radius: 6px; 
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    .upload-btn:hover { background: #0b5ed7; }
 
-    /* 图片网格 */
-    .images { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1.5rem; }
-    .img-card { border: 1px solid #eee; border-radius: 8px; overflow: hidden; position: relative; }
-    .img-checkbox { position: absolute; top: 0.5rem; left: 0.5rem; width: 1.2rem; height: 1.2rem; z-index: 10; }
-    .img-card img { width: 100%; height: 180px; object-fit: cover; }
-    .img-info { padding: 1rem; }
-    .img-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .btn-group { display: flex; gap: 0.5rem; margin-top:0.5rem; }
-    .copy-btn { flex:1; padding:0.5rem; background:#28a745; color:white; border:none; border-radius:4px; }
-    .delete-btn { flex:1; padding:0.5rem; background:#dc3545; color:white; border:none; border-radius:4px; }
+    /* 图片列表 */
+    .images { 
+      display: grid; 
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); 
+      gap: 1.5rem; 
+      margin-bottom: 2rem;
+    }
+    .img-card { 
+      border: 1px solid #eee; 
+      border-radius: 8px; 
+      overflow: hidden; 
+      background: white;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      position: relative;
+      transition: border 0.3s;
+    }
+    .img-card.selected { border: 2px solid #0d6efd; }
+    .img-checkbox { 
+      position: absolute; 
+      top: 0.5rem; 
+      left: 0.5rem; 
+      width: 1.2rem; 
+      height: 1.2rem; 
+      cursor: pointer;
+      z-index: 10;
+      accent-color: #0d6efd;
+    }
+    .img-card img { 
+      width: 100%; 
+      height: 180px; 
+      object-fit: cover; 
+      border-bottom: 1px solid #eee;
+    }
+    .img-info { 
+      padding: 1rem; 
+      font-size: 0.9rem; 
+      color: #333;
+    }
+    .img-name { 
+      white-space: nowrap; 
+      overflow: hidden; 
+      text-overflow: ellipsis; 
+      margin-bottom: 0.5rem;
+    }
+    .img-size { color: #6c757d; font-size: 0.8rem; margin-bottom: 0.8rem; }
+    .btn-group { display: flex; gap: 0.5rem; }
+    .copy-btn { 
+      flex: 1;
+      padding: 0.5rem; 
+      background: #28a745; 
+      color: white; 
+      border: none; 
+      border-radius: 4px; 
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .copy-btn:hover { background: #218838; }
+    .delete-btn { 
+      flex: 1;
+      padding: 0.5rem; 
+      background: #dc3545; 
+      color: white; 
+      border: none; 
+      border-radius: 4px; 
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .delete-btn:hover { background: #bb2d3b; }
 
     /* 分页样式 */
-    .pagination { margin-top: 2rem; display: flex; justify-content: center; align-items: center; gap: 0.5rem; }
-    .page-btn { padding: 0.5rem 1rem; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer; }
-    .page-btn.active { background: #0d6efd; color: white; border-color: #0d6efd; }
-    .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .pagination { 
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+      gap: 0.5rem; 
+      margin-top: 2rem;
+    }
+    .page-btn { 
+      padding: 0.5rem 1rem; 
+      border: 1px solid #ddd; 
+      background: white; 
+      border-radius: 4px; 
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .page-btn.active { 
+      background: #0d6efd; 
+      color: white; 
+      border-color: #0d6efd;
+    }
+    .page-btn:disabled { 
+      opacity: 0.5; 
+      cursor: not-allowed;
+    }
+    .page-info { color: #6c757d; margin: 0 1rem; }
     
-    .loading { text-align: center; padding: 2rem; grid-column: 1/-1; }
+    /* 加载提示 */
+    .loading { text-align: center; color: #6c757d; padding: 2rem; grid-column: 1 / -1; }
   </style>
 </head>
 <body>
-
-<div class="container">
-  <div class="header">
-    <h1>R2 图床</h1>
-    <button class="logout-btn" onclick="logout()">退出登录</button>
-  </div>
-
-  <div class="batch-actions">
-    <div class="batch-left">
-      <label><input type="checkbox" id="selectAllCheckbox"> 全选</label>
-      <span>已选：<span id="selectedCount">0</span> 张</span>
+  <div class="container">
+    <!-- 头部：标题 + 退出按钮 -->
+    <div class="header">
+      <h1>极简 R2 图床</h1>
+      <button class="logout-btn" onclick="logout()">退出登录</button>
     </div>
-    <button class="batch-delete-btn" id="batchDeleteBtn" onclick="batchDeleteImages()">批量删除</button>
-  </div>
 
-  <div class="upload-area">
-    <p>点击或拖拽上传</p>
-    <input type="file" id="fileInput" multiple accept="image/*">
-    <button class="upload-btn" onclick="document.getElementById('fileInput').click()">选择图片</button>
-  </div>
-
-  <div id="images" class="images"></div>
-  <div class="pagination" id="pagination"></div>
-</div>
-
-<script>
-const fileInput = document.getElementById('fileInput');
-const imagesEl = document.getElementById('images');
-const paginationEl = document.getElementById('pagination');
-
-let allImages = [];       // 所有图片
-let page = 1;             // 当前页
-const pageSize = 20;      // 每页20张
-
-// 选中列表
-let selectedKeys = new Set();
-
-// 上传
-fileInput.onchange = async e => {
-  const formData = new FormData();
-  Array.from(e.target.files).forEach(f => formData.append('file', f));
-  try {
-    const res = await fetch('/api/upload', { method: 'POST', body: formData });
-    if (res.status === 401) { alert('请先登录'); location.reload(); }
-    const data = await res.json();
-    if (data.success) {
-      loadImages();
-    } else alert('上传失败：' + data.error);
-  } catch (e) { alert('网络错误'); }
-};
-
-// 加载全部图片
-async function loadImages() {
-  imagesEl.innerHTML = '<div class="loading">加载中...</div>';
-  selectedKeys.clear();
-  updateBatchUI();
-  
-  try {
-    const res = await fetch('/api/list');
-    if (res.status === 401) { alert('请登录'); location.reload(); }
-    const data = await res.json();
-    if (data.success) {
-      allImages = data.data;
-      renderPage();
-      renderPagination();
-    }
-  } catch (e) { imagesEl.innerHTML = '加载失败'; }
-}
-
-// 渲染当前页
-function renderPage() {
-  const start = (page-1)*pageSize;
-  const end = start + pageSize;
-  const list = allImages.slice(start, end);
-
-  if (list.length === 0) { imagesEl.innerHTML = '<div class="loading">暂无图片</div>'; return; }
-
-  imagesEl.innerHTML = list.map(img => {
-    const urlObj = new URL(img.url);
-    const key = urlObj.pathname.replace(/^\//, '');
-    return `
-      <div class="img-card" data-key="${key}">
-        <input type="checkbox" class="img-checkbox" onchange="toggleSelect('${key}',this.checked)">
-        <img src="${img.url}">
-        <div class="img-info">
-          <div class="img-name">${img.name}</div>
-          <div class="btn-group">
-            <button class="copy-btn" onclick="copy('${img.url}')">复制</button>
-            <button class="delete-btn" onclick="deleteOne('${key}')">删除</button>
-          </div>
+    <!-- 批量操作栏 -->
+    <div class="batch-actions">
+      <div class="batch-left">
+        <div class="batch-select-all">
+          <input type="checkbox" id="selectAllCheckbox" class="img-checkbox" onchange="toggleSelectAll()">
+          <span>全选/取消全选</span>
         </div>
+        <div class="batch-count">已选：<span id="selectedCount">0</span> 张</div>
       </div>
-    `;
-  }).join('');
-}
+      <button class="batch-delete-btn" id="batchDeleteBtn" onclick="batchDeleteImages()">批量删除</button>
+    </div>
+    
+    <!-- 上传区域 -->
+    <div class="upload-area" id="uploadArea">
+      <p>点击区域或拖拽图片到此处上传</p>
+      <input type="file" id="fileInput" multiple accept="image/*">
+      <button class="upload-btn" onclick="document.getElementById('fileInput').click()">选择图片上传</button>
+    </div>
 
-// 渲染分页
-function renderPagination() {
-  const total = Math.ceil(allImages.length / pageSize);
-  paginationEl.innerHTML = '';
+    <!-- 图片列表 -->
+    <div id="images" class="images">
+      <div class="loading">加载中...</div>
+    </div>
 
-  const prev = document.createElement('button');
-  prev.className = 'page-btn';
-  prev.innerText = '上一页';
-  prev.disabled = page === 1;
-  prev.onclick = () => { page--; renderPage(); renderPagination(); };
-  paginationEl.appendChild(prev);
+    <!-- 分页区域 -->
+    <div class="pagination" id="pagination">
+      <div class="loading">加载分页...</div>
+    </div>
+  </div>
 
-  for(let i=1; i<=total; i++){
-    const btn = document.createElement('button');
-    btn.className = `page-btn ${i===page ? 'active' : ''}`;
-    btn.innerText = i;
-    btn.onclick = () => { page = i; renderPage(); renderPagination(); };
-    paginationEl.appendChild(btn);
-  }
+  <script>
+    // 核心变量
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+    const imagesEl = document.getElementById('images');
+    const paginationEl = document.getElementById('pagination');
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    const selectedCountEl = document.getElementById('selectedCount');
+    const batchDeleteBtn = document.getElementById('batchDeleteBtn');
+    
+    // 分页配置
+    let allImages = [];       // 所有图片数据
+    let currentPage = 1;      // 当前页码
+    const pageSize = 20;      // 每页显示20张
+    
+    // 选中的图片key集合
+    let selectedKeys = new Set();
 
-  const next = document.createElement('button');
-  next.className = 'page-btn';
-  next.innerText = '下一页';
-  next.disabled = page === total || total ===0;
-  next.onclick = () => { page++; renderPage(); renderPagination(); };
-  paginationEl.appendChild(next);
-}
+    // 1. 上传图片
+    async function uploadFiles(files) {
+      if (files.length === 0) return;
+      
+      const formData = new FormData();
+      Array.from(files).forEach(f => formData.append('file', f));
 
-// 选择
-function toggleSelect(key, checked) {
-  checked ? selectedKeys.add(key) : selectedKeys.delete(key);
-  updateBatchUI();
-}
+      try {
+        const res = await fetch('/api/upload', { 
+          method: 'POST', 
+          body: formData 
+        });
+        
+        if (res.status === 401) {
+          alert('请先输入正确的访问密码！');
+          window.location.reload();
+          return;
+        }
 
-function updateBatchUI() {
-  document.getElementById('selectedCount').innerText = selectedKeys.size;
-  const btn = document.getElementById('batchDeleteBtn');
-  selectedKeys.size ? btn.classList.add('enabled') : btn.classList.remove('enabled');
-}
+        const data = await res.json();
+        if (data.success) {
+          loadImages(); // 上传成功后刷新列表
+        } else {
+          alert('上传失败：' + data.error);
+        }
+      } catch (error) {
+        alert('网络错误：' + error.message);
+      }
+    }
 
-// 复制
-function copy(url) {
-  navigator.clipboard.writeText(url).then(()=>alert('已复制'));
-}
+    // 2. 加载所有图片并渲染分页
+    async function loadImages() {
+      // 重置选中状态
+      selectedKeys.clear();
+      updateBatchUI();
+      
+      imagesEl.innerHTML = '<div class="loading">加载中...</div>';
+      paginationEl.innerHTML = '<div class="loading">加载分页...</div>';
+      
+      try {
+        const res = await fetch('/api/list');
+        
+        if (res.status === 401) {
+          alert('请先输入正确的访问密码！');
+          window.location.reload();
+          return;
+        }
 
-// 单个删除
-async function deleteOne(key) {
-  if(!confirm('确定删除？')) return;
-  const res = await fetch('/api/delete', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ key })
-  });
-  if(res.status ===401){alert('请登录');location.reload();}
-  loadImages();
-}
+        const data = await res.json();
+        
+        if (data.success && data.data.length > 0) {
+          allImages = data.data; // 保存所有图片
+          renderCurrentPage();   // 渲染当前页
+          renderPagination();    // 渲染分页按钮
+        } else {
+          imagesEl.innerHTML = '<div class="loading">暂无上传的图片</div>';
+          paginationEl.innerHTML = '';
+        }
+      } catch (error) {
+        imagesEl.innerHTML = '<div class="loading">加载失败，请刷新重试</div>';
+        paginationEl.innerHTML = '';
+        console.error('加载列表失败：', error);
+      }
+    }
 
-// 批量删除
-async function batchDeleteImages() {
-  const keys = Array.from(selectedKeys);
-  if(keys.length===0)return;
-  if(!confirm(`确定删除 ${keys.length} 张？`))return;
-  for(let key of keys) await fetch('/api/delete', {
-    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key})
-  });
-  loadImages();
-}
+    // 3. 渲染当前页图片
+    function renderCurrentPage() {
+      // 计算当前页的图片范围
+      const startIndex = (currentPage - 1) * pageSize;
+      const endIndex = startIndex + pageSize;
+      const currentImages = allImages.slice(startIndex, endIndex);
+      
+      if (currentImages.length === 0) {
+        imagesEl.innerHTML = '<div class="loading">当前页无图片</div>';
+        return;
+      }
 
-// 退出
-function logout() {
-  document.cookie = "img_bed_verified=; Path=/; Max-Age=0";
-  location.reload();
-}
+      // 渲染图片卡片
+      imagesEl.innerHTML = currentImages.map(img => {
+        // 精准解析R2 key
+        const urlObj = new URL(img.url);
+        const pathname = urlObj.pathname;
+        const key = pathname.startsWith('/') ? pathname.slice(1) : pathname;
+        
+        // 判断是否已选中
+        const isSelected = selectedKeys.has(key);
+        
+        return `
+          <div class="img-card ${isSelected ? 'selected' : ''}" data-key="${key}">
+            <input type="checkbox" class="img-checkbox" ${isSelected ? 'checked' : ''} onchange="toggleImageSelect('${key}', this.checked)">
+            <img src="${img.url}" alt="${img.name}" loading="lazy">
+            <div class="img-info">
+              <div class="img-name" title="${img.name}">${img.name}</div>
+              <div class="img-size">${img.size} · ${img.uploaded}</div>
+              <div class="btn-group">
+                <button class="copy-btn" onclick="copy('${img.url}')">复制链接</button>
+                <button class="delete-btn" onclick="deleteImage('${key}')">删除</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
 
-window.onload = loadImages;
-</script>
+    // 4. 渲染分页按钮
+    function renderPagination() {
+      const totalImages = allImages.length;
+      const totalPages = Math.ceil(totalImages / pageSize);
+      
+      // 清空分页容器
+      paginationEl.innerHTML = '';
+      
+      // 上一页按钮
+      const prevBtn = document.createElement('button');
+      prevBtn.className = 'page-btn';
+      prevBtn.innerText = '上一页';
+      prevBtn.disabled = currentPage === 1;
+      prevBtn.onclick = () => {
+        currentPage--;
+        renderCurrentPage();
+        renderPagination();
+      };
+      paginationEl.appendChild(prevBtn);
+      
+      // 页码信息
+      const pageInfo = document.createElement('span');
+      pageInfo.className = 'page-info';
+      pageInfo.innerText = `第 ${currentPage} 页 / 共 ${totalPages} 页（总计 ${totalImages} 张）`;
+      paginationEl.appendChild(pageInfo);
+      
+      // 下一页按钮
+      const nextBtn = document.createElement('button');
+      nextBtn.className = 'page-btn';
+      nextBtn.innerText = '下一页';
+      nextBtn.disabled = currentPage === totalPages || totalPages === 0;
+      nextBtn.onclick = () => {
+        currentPage++;
+        renderCurrentPage();
+        renderPagination();
+      };
+      paginationEl.appendChild(nextBtn);
+    }
+
+    // 5. 复制图片链接
+    function copy(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        alert('图片链接已复制！');
+      }).catch(() => {
+        // 降级方案
+        const input = document.createElement('input');
+        input.value = text;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
+        alert('图片链接已复制！');
+      });
+    }
+
+    // 6. 删除单张图片
+    async function deleteImage(key) {
+      if (!confirm('确定要删除这张图片吗？删除后无法恢复！')) {
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/delete', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ key })
+        });
+
+        if (res.status === 401) {
+          alert('请先输入正确的访问密码！');
+          window.location.reload();
+          return;
+        }
+
+        if (!res.ok) {
+          let errorMsg = `请求失败（状态码：${res.status}）`;
+          try {
+            const errData = await res.json();
+            errorMsg = errData.error || errorMsg;
+          } catch (e) {}
+          alert('删除失败：' + errorMsg);
+          return;
+        }
+
+        const data = await res.json();
+        if (data.success) {
+          alert('删除成功！');
+          loadImages(); // 刷新列表
+        } else {
+          alert('删除失败：' + data.error);
+        }
+      } catch (error) {
+        alert(`删除失败：网络错误（${error.message}）`);
+        console.error('删除图片网络错误：', error);
+      }
+    }
+
+    // 7. 切换单张图片选中状态
+    function toggleImageSelect(key, isChecked) {
+      const card = document.querySelector(`.img-card[data-key="${key}"]`);
+      
+      if (isChecked) {
+        selectedKeys.add(key);
+        card.classList.add('selected');
+      } else {
+        selectedKeys.delete(key);
+        card.classList.remove('selected');
+      }
+      
+      updateBatchUI();
+      syncSelectAllStatus();
+    }
+
+    // 8. 全选/取消全选当前页
+    function toggleSelectAll() {
+      const isChecked = selectAllCheckbox.checked;
+      const checkboxes = document.querySelectorAll('.img-card .img-checkbox');
+      
+      // 清空原有选中记录
+      selectedKeys.clear();
+      
+      // 遍历当前页所有复选框
+      checkboxes.forEach(checkbox => {
+        checkbox.checked = isChecked;
+        const key = checkbox.closest('.img-card').dataset.key;
+        
+        const card = document.querySelector(`.img-card[data-key="${key}"]`);
+        if (isChecked) {
+          selectedKeys.add(key);
+          card.classList.add('selected');
+        } else {
+          card.classList.remove('selected');
+        }
+      });
+      
+      // 更新UI
+      updateBatchUI();
+    }
+
+    // 9. 同步全选框状态
+    function syncSelectAllStatus() {
+      const checkboxes = document.querySelectorAll('.img-card .img-checkbox');
+      const total = checkboxes.length;
+      const checkedCount = document.querySelectorAll('.img-card .img-checkbox:checked').length;
+      
+      selectAllCheckbox.checked = total > 0 && checkedCount === total;
+    }
+
+    // 10. 更新批量操作UI
+    function updateBatchUI() {
+      const count = selectedKeys.size;
+      selectedCountEl.textContent = count;
+      
+      // 启用/禁用批量删除按钮
+      if (count > 0) {
+        batchDeleteBtn.classList.add('enabled');
+      } else {
+        batchDeleteBtn.classList.remove('enabled');
+      }
+    }
+
+    // 11. 批量删除图片
+    async function batchDeleteImages() {
+      const keys = Array.from(selectedKeys);
+      if (keys.length === 0) return;
+      
+      if (!confirm(`确定要删除选中的 ${keys.length} 张图片吗？删除后无法恢复！`)) {
+        return;
+      }
+
+      try {
+        let successCount = 0;
+        let failCount = 0;
+        const failKeys = [];
+
+        // 串行删除，避免请求过多
+        for (const key of keys) {
+          const res = await fetch('/api/delete', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ key })
+          });
+
+          if (res.status === 401) {
+            alert('请先输入正确的访问密码！');
+            window.location.reload();
+            return;
+          }
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success) {
+              successCount++;
+            } else {
+              failCount++;
+              failKeys.push(key);
+            }
+          } else {
+            failCount++;
+            failKeys.push(key);
+          }
+        }
+
+        // 提示结果
+        let msg = `批量删除完成！成功：${successCount} 张，失败：${failCount} 张`;
+        if (failCount > 0) {
+          msg += `\n失败的图片key：${failKeys.join(', ')}`;
+        }
+        alert(msg);
+        
+        // 刷新列表
+        loadImages();
+      } catch (error) {
+        alert(`批量删除失败：网络错误（${error.message}）`);
+        console.error('批量删除网络错误：', error);
+      }
+    }
+
+    // 12. 退出登录（修复版）
+    function logout() {
+      if (confirm('确定要退出登录吗？')) {
+        // 彻底清除Cookie
+        document.cookie = "img_bed_verified=; Path=/; Domain=" + window.location.hostname + "; Max-Age=0";
+        document.cookie = "img_bed_verified=; Path=/; Max-Age=0";
+        
+        // 强制刷新页面
+        window.location.reload(true);
+      }
+    }
+
+    // 绑定事件
+    fileInput.addEventListener('change', e => uploadFiles(e.target.files));
+    uploadArea.addEventListener('dragover', e => e.preventDefault());
+    uploadArea.addEventListener('drop', e => {
+      e.preventDefault();
+      uploadFiles(e.dataTransfer.files);
+    });
+
+    // 页面加载初始化
+    window.onload = loadImages;
+  </script>
 </body>
 </html>
