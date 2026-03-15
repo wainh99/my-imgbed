@@ -332,13 +332,25 @@
       }
     }
 
-    // 5. 退出登录
-    function logout() {
-      if (confirm('确定要退出登录吗？')) {
-        document.cookie = "img_bed_verified=; Path=/; Max-Age=0";
-        window.location.reload();
-      }
+// 5. 退出登录（修复版：100%清除Cookie）
+function logout() {
+  if (confirm('确定要退出登录吗？')) {
+    // 方案1：清除Cookie（兼容所有属性）
+    const cookies = document.cookie.split('; ');
+    for (const cookie of cookies) {
+      const [name] = cookie.split('=');
+      // 清除所有相关Cookie，覆盖不同属性
+      document.cookie = `${name}=; Path=/; Domain=${window.location.hostname}; Max-Age=0; HttpOnly; Secure`;
+      document.cookie = `${name}=; Path=/; Max-Age=0`; // 兜底：不带Domain/HttpOnly/Secure
     }
+
+    // 方案2：强制刷新页面（绕过浏览器缓存）
+    window.location.reload(true); // true = 强制从服务器刷新，不读缓存
+    
+    // 备选：直接跳转到首页（确保重新走中间件验证）
+    // window.location.href = window.location.origin;
+  }
+}
 
     // ========== 新增：批量删除相关函数 ==========
     // 6. 切换单张图片选中状态
