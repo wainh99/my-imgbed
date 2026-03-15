@@ -81,7 +81,7 @@ export async function onRequest(context) {
       status: 302,
       headers: {
         'Location': url.pathname, // 重定向到原页面（去掉参数）
-        'Set-Cookie': `img_bed_verified=${PASSWORD}; Path=/; Max-Age=604800; HttpOnly; Secure`, // 7天有效期，仅HTTPS
+        'Set-Cookie': `img_bed_verified=${PASSWORD}; Path=/; Max-Age=604800; Secure`,// 7天有效期，仅HTTPS
       }
     });
     return response;
