@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>极简 R2 图床</title>
+  <title>老Q 图床</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: "Microsoft Yahei", sans-serif; }
     body { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; background: #f8f9fa; }
     .container { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
     h1 { color: #333; margin: 0; }
     .logout-btn { 
       background: #dc3545; 
@@ -20,6 +20,41 @@
       font-size: 0.9rem;
     }
     .logout-btn:hover { background: #bb2d3b; }
+    
+    /* 批量操作栏（新增） */
+    .batch-actions { 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center; 
+      padding: 1rem 0; 
+      margin-bottom: 1rem; 
+      border-bottom: 1px solid #eee;
+    }
+    .batch-left { display: flex; align-items: center; gap: 1rem; }
+    .batch-select-all { 
+      display: flex; 
+      align-items: center; 
+      gap: 0.5rem; 
+      cursor: pointer; 
+      color: #333;
+    }
+    .batch-count { color: #6c757d; }
+    .batch-delete-btn { 
+      background: #dc3545; 
+      color: white; 
+      border: none; 
+      padding: 0.5rem 1rem; 
+      border-radius: 6px; 
+      cursor: pointer;
+      font-size: 0.9rem;
+      opacity: 0.6;
+      pointer-events: none;
+    }
+    .batch-delete-btn.enabled { 
+      opacity: 1; 
+      pointer-events: auto;
+    }
+    .batch-delete-btn.enabled:hover { background: #bb2d3b; }
     
     /* 上传区域 */
     .upload-area { 
@@ -56,6 +91,18 @@
       overflow: hidden; 
       background: white;
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      position: relative;
+    }
+    /* 图片复选框（新增） */
+    .img-checkbox { 
+      position: absolute; 
+      top: 0.5rem; 
+      left: 0.5rem; 
+      width: 1.2rem; 
+      height: 1.2rem; 
+      cursor: pointer;
+      z-index: 10;
+      accent-color: #0d6efd;
     }
     .img-card img { 
       width: 100%; 
@@ -100,15 +147,27 @@
     .delete-btn:hover { background: #bb2d3b; }
     
     /* 加载提示 */
-    .loading { text-align: center; color: #6c757d; padding: 2rem; }
+    .loading { text-align: center; color: #6c757d; padding: 2rem; grid-column: 1 / -1; }
   </style>
 </head>
 <body>
   <div class="container">
-    <!-- 新增头部：标题 + 退出按钮 -->
+    <!-- 头部：标题 + 退出按钮 -->
     <div class="header">
       <h1>极简 R2 图床</h1>
       <button class="logout-btn" onclick="logout()">退出登录</button>
+    </div>
+
+    <!-- 批量操作栏（新增） -->
+    <div class="batch-actions">
+      <div class="batch-left">
+        <div class="batch-select-all" onclick="toggleSelectAll()">
+          <input type="checkbox" id="selectAllCheckbox" class="img-checkbox">
+          <span>全选/取消全选</span>
+        </div>
+        <div class="batch-count">已选：<span id="selectedCount">0</span> 张</div>
+      </div>
+      <button class="batch-delete-btn" id="batchDeleteBtn" onclick="batchDeleteImages()">批量删除</button>
     </div>
     
     <!-- 上传区域 -->
@@ -128,8 +187,14 @@
     const uploadArea = document.getElementById('uploadArea');
     const fileInput = document.getElementById('fileInput');
     const imagesEl = document.getElementById('images');
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    const selectedCountEl = document.getElementById('selectedCount');
+    const batchDeleteBtn = document.getElementById('batchDeleteBtn');
+    
+    // 存储已选中的图片key（新增）
+    let selectedKeys = new Set();
 
-    // 1. 上传图片（优化密码错误提示）
+    // 1. 上传图片
     async function uploadFiles(files) {
       if (files.length === 0) return;
       
@@ -142,7 +207,6 @@
           body: formData 
         });
         
-        // 捕获401未授权（密码错误/未登录）
         if (res.status === 401) {
           alert('请先输入正确的访问密码！');
           window.location.reload();
@@ -160,13 +224,16 @@
       }
     }
 
-    // 2. 加载所有图片列表（优化密码错误提示）
+    // 2. 加载所有图片列表
     async function loadImages() {
+      // 重置选中状态（新增）
+      selectedKeys.clear();
+      updateBatchUI();
+      
       imagesEl.innerHTML = '<div class="loading">加载中...</div>';
       try {
         const res = await fetch('/api/list');
         
-        // 捕获401未授权
         if (res.status === 401) {
           alert('请先输入正确的访问密码！');
           window.location.reload();
@@ -177,13 +244,14 @@
         
         if (data.success && data.data.length > 0) {
           imagesEl.innerHTML = data.data.map(img => {
-            // 从url解析出R2的key（uploads/xxx.jpg）
-          // 精准解析 R2 key：从图片URL中提取 "uploads/" 开头的部分
+            // 精准解析R2 key
             const urlObj = new URL(img.url);
-            const pathname = urlObj.pathname; // 获取URL路径（比如 "/uploads/123.jpg"）
-              const key = pathname.startsWith('/') ? pathname.slice(1) : pathname; // 去掉开头的 "/"，得到 "uploads/123.jpg"
+            const pathname = urlObj.pathname;
+            const key = pathname.startsWith('/') ? pathname.slice(1) : pathname;
+            
             return `
-              <div class="img-card">
+              <div class="img-card" data-key="${key}">
+                <input type="checkbox" class="img-checkbox" onchange="toggleImageSelect('${key}', this.checked)">
                 <img src="${img.url}" alt="${img.name}" loading="lazy">
                 <div class="img-info">
                   <div class="img-name" title="${img.name}">${img.name}</div>
@@ -220,7 +288,7 @@
       });
     }
 
-    // 4. 删除图片（新增功能）
+    // 4. 单张删除图片
     async function deleteImage(key) {
       if (!confirm('确定要删除这张图片吗？删除后无法恢复！')) {
         return;
@@ -235,10 +303,19 @@
           body: JSON.stringify({ key })
         });
 
-        // 捕获401未授权
         if (res.status === 401) {
           alert('请先输入正确的访问密码！');
           window.location.reload();
+          return;
+        }
+
+        if (!res.ok) {
+          let errorMsg = `请求失败（状态码：${res.status}）`;
+          try {
+            const errData = await res.json();
+            errorMsg = errData.error || errorMsg;
+          } catch (e) {}
+          alert('删除失败：' + errorMsg);
           return;
         }
 
@@ -250,22 +327,133 @@
           alert('删除失败：' + data.error);
         }
       } catch (error) {
-        alert('删除失败：网络错误');
-        console.error('删除图片错误：', error);
+        alert(`删除失败：网络错误（${error.message}）`);
+        console.error('删除图片网络错误：', error);
       }
     }
 
-    // 5. 退出登录（新增功能）
+    // 5. 退出登录
     function logout() {
       if (confirm('确定要退出登录吗？')) {
-        // 清除验证Cookie
         document.cookie = "img_bed_verified=; Path=/; Max-Age=0";
-        // 刷新页面回到密码输入页
         window.location.reload();
       }
     }
 
-    // 绑定事件（移除uploadArea点击事件，解决两次弹窗）
+    // ========== 新增：批量删除相关函数 ==========
+    // 6. 切换单张图片选中状态
+    function toggleImageSelect(key, isChecked) {
+      if (isChecked) {
+        selectedKeys.add(key);
+      } else {
+        selectedKeys.delete(key);
+      }
+      updateBatchUI();
+      // 同步全选框状态
+      syncSelectAllStatus();
+    }
+
+    // 7. 全选/取消全选
+    function toggleSelectAll() {
+      const isAllSelected = selectAllCheckbox.checked;
+      selectAllCheckbox.checked = !isAllSelected;
+      
+      const checkboxes = document.querySelectorAll('.img-card .img-checkbox');
+      checkboxes.forEach(checkbox => {
+        checkbox.checked = !isAllSelected;
+        const key = checkbox.closest('.img-card').dataset.key;
+        if (!isAllSelected) {
+          selectedKeys.add(key);
+        } else {
+          selectedKeys.delete(key);
+        }
+      });
+      
+      updateBatchUI();
+    }
+
+    // 8. 同步全选框状态
+    function syncSelectAllStatus() {
+      const checkboxes = document.querySelectorAll('.img-card .img-checkbox');
+      const total = checkboxes.length;
+      const selected = selectedKeys.size;
+      
+      selectAllCheckbox.checked = total > 0 && selected === total;
+    }
+
+    // 9. 更新批量操作UI（选中数量、按钮状态）
+    function updateBatchUI() {
+      const count = selectedKeys.size;
+      selectedCountEl.textContent = count;
+      
+      // 启用/禁用批量删除按钮
+      if (count > 0) {
+        batchDeleteBtn.classList.add('enabled');
+      } else {
+        batchDeleteBtn.classList.remove('enabled');
+      }
+    }
+
+    // 10. 批量删除图片（核心）
+    async function batchDeleteImages() {
+      const keys = Array.from(selectedKeys);
+      if (keys.length === 0) return;
+      
+      if (!confirm(`确定要删除选中的 ${keys.length} 张图片吗？删除后无法恢复！`)) {
+        return;
+      }
+
+      try {
+        // 批量调用删除接口（串行执行，避免请求过多）
+        let successCount = 0;
+        let failCount = 0;
+        const failKeys = [];
+
+        for (const key of keys) {
+          const res = await fetch('/api/delete', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ key })
+          });
+
+          if (res.status === 401) {
+            alert('请先输入正确的访问密码！');
+            window.location.reload();
+            return;
+          }
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success) {
+              successCount++;
+            } else {
+              failCount++;
+              failKeys.push(key);
+            }
+          } else {
+            failCount++;
+            failKeys.push(key);
+          }
+        }
+
+        // 提示结果
+        let msg = `批量删除完成！成功：${successCount} 张，失败：${failCount} 张`;
+        if (failCount > 0) {
+          msg += `\n失败的图片key：${failKeys.join(', ')}`;
+        }
+        alert(msg);
+        
+        // 刷新列表
+        loadImages();
+      } catch (error) {
+        alert(`批量删除失败：网络错误（${error.message}）`);
+        console.error('批量删除网络错误：', error);
+      }
+    }
+
+    // 绑定事件
     fileInput.addEventListener('change', e => uploadFiles(e.target.files));
     uploadArea.addEventListener('dragover', e => e.preventDefault());
     uploadArea.addEventListener('drop', e => {
