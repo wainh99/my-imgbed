@@ -5,21 +5,29 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>R2图床</title>
 <style>
+/* 基础样式 */
 *{box-sizing:border-box;margin:0;padding:0;font-family:"Microsoft Yahei",sans-serif}
 body{max-width:1200px;margin:2rem auto;padding:0 1rem;background:#f8f9fa}
 .container{background:white;padding:2rem;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,0.05)}
 .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem}
 .logout-btn{background:#dc3545;color:white;border:none;padding:0.5rem 1rem;border-radius:6px;cursor:pointer}
 
+/* 批量操作栏 */
 .batch-actions{display:flex;justify-content:space-between;align-items:center;padding:1rem 0;border-bottom:1px solid #eee;margin-bottom:1rem}
-.batch-left{display:flex;align-items:center;gap:1rem}
-.batch-delete-btn{background:#dc3545;color:white;border:none;padding:0.5rem 1rem;border-radius:6px;opacity:0.6;pointer-events:none}
-.batch-delete-btn.enabled{opacity:1;pointer-events:auto}
+.batch-left{display:flex;align-items:center;gap:1.5rem}
+.batch-delete-btn,.batch-download-btn{background:#dc3545;color:white;border:none;padding:0.5rem 1rem;border-radius:6px;opacity:0.6;pointer-events:none;margin-left:0.5rem}
+.batch-download-btn{background:#0d6efd}
+.batch-delete-btn.enabled,.batch-download-btn.enabled{opacity:1;pointer-events:auto}
 
-.upload-area{border:2px dashed #dee2e6;padding:3rem 2rem;text-align:center;border-radius:8px;margin-bottom:2rem}
+/* 上传区域 + 进度条 */
+.upload-area{border:2px dashed #dee2e6;padding:3rem 2rem;text-align:center;border-radius:8px;margin-bottom:2rem;position:relative}
 #fileInput{display:none}
 .upload-btn{background:#0d6efd;color:white;border:none;padding:0.75rem 1.5rem;border-radius:6px;cursor:pointer}
+.upload-progress{width:80%;height:8px;background:#eee;border-radius:4px;margin:1rem auto;overflow:hidden;display:none}
+.progress-bar{height:100%;background:#0d6efd;width:0%;transition:width 0.3s}
+.upload-text{color:#6c757d;margin-bottom:1rem}
 
+/* 图片列表 */
 .images{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1.5rem}
 .img-card{border:1px solid #eee;border-radius:8px;overflow:hidden;position:relative}
 .img-checkbox{position:absolute;top:0.5rem;left:0.5rem;width:1.2rem;height:1.2rem;z-index:10}
@@ -27,14 +35,17 @@ body{max-width:1200px;margin:2rem auto;padding:0 1rem;background:#f8f9fa}
 .img-info{padding:1rem;position:relative}
 .img-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:0.5rem}
 
+/* 按钮组 */
 .btn-group{display:flex;gap:0.5rem}
-.copy-btn{flex:1;padding:0.5rem;background:#28a745;color:white;border:none;border-radius:4px;cursor:pointer}
-.copy-btn:hover{background:#218838}
+.copy-btn,.download-btn{flex:1;padding:0.5rem;background:#28a745;color:white;border:none;border-radius:4px;cursor:pointer}
+.download-btn{background:#17a2b8}
 .delete-btn{flex:1;padding:0.5rem;background:#dc3545;color:white;border:none;border-radius:4px}
 
+/* 复制提示 */
 .copy-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#28a745;color:white;padding:6px 12px;border-radius:6px;font-size:14px;display:none;z-index:9999}
 .copy-toast.show{display:block}
 
+/* 分页 */
 .pagination{margin-top:2rem;display:flex;justify-content:center;align-items:center;gap:0.5rem}
 .page-btn{padding:0.5rem 1rem;border:1px solid #ddd;background:white;border-radius:4px;cursor:pointer}
 .page-btn.active{background:#0d6efd;color:white;border-color:#0d6efd}
@@ -55,11 +66,17 @@ body{max-width:1200px;margin:2rem auto;padding:0 1rem;background:#f8f9fa}
       <label><input type="checkbox" id="selectAll" onchange="doSelectAll()"> 全选当前页</label>
       <span>已选：<span id="selCount">0</span> 张</span>
     </div>
-    <button class="batch-delete-btn" id="batchDelBtn" onclick="batchDelete()">批量删除</button>
+    <div>
+      <button class="batch-download-btn" id="batchDownloadBtn" onclick="batchDownload()">批量下载</button>
+      <button class="batch-delete-btn" id="batchDelBtn" onclick="batchDelete()">批量删除</button>
+    </div>
   </div>
 
   <div class="upload-area">
-    <p>点击或拖拽上传</p>
+    <p class="upload-text">点击或拖拽上传</p>
+    <div class="upload-progress" id="uploadProgress">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
     <input type="file" id="fileInput" multiple accept="image/*">
     <button class="upload-btn" onclick="document.getElementById('fileInput').click()">选择图片</button>
   </div>
@@ -77,47 +94,101 @@ const paginationEl = document.getElementById('pagination');
 const selectAllBox = document.getElementById('selectAll');
 const selCountEl = document.getElementById('selCount');
 const batchDelBtn = document.getElementById('batchDelBtn');
+const batchDownloadBtn = document.getElementById('batchDownloadBtn');
 const copyToast = document.getElementById('copyToast');
+const uploadProgress = document.getElementById('uploadProgress');
+const progressBar = document.getElementById('progressBar');
+const uploadText = document.querySelector('.upload-text');
 
 let allImages = [];
 let page = 1;
 const pageSize = 20;
 let selected = new Set();
 
-// 上传
+// 1. 上传图片（带进度条）
 fileInput.onchange = async e => {
+  const files = Array.from(e.target.files);
+  if (files.length === 0) return;
+
+  // 显示进度条
+  uploadProgress.style.display = 'block';
+  progressBar.style.width = '0%';
+  uploadText.innerText = `准备上传 ${files.length} 张图片...`;
+
   const fd = new FormData();
-  Array.from(e.target.files).forEach(f => fd.append('file', f));
+  files.forEach(f => fd.append('file', f));
+
   try {
-    const r = await fetch('/api/upload', {method:'POST', body:fd});
-    if(r.status===401){alert('请登录');location.reload()}
-    const d = await r.json();
-    d.success ? loadImages() : alert('上传失败')
-  }catch(e){alert('网络错误')}
+    // 创建带进度的请求
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload');
+    
+    // 监听上传进度
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        const percent = (e.loaded / e.total) * 100;
+        progressBar.style.width = `${percent}%`;
+        uploadText.innerText = `上传中：${Math.round(percent)}%`;
+      }
+    });
+
+    // 上传完成回调
+    xhr.addEventListener('load', () => {
+      uploadProgress.style.display = 'none';
+      uploadText.innerText = '点击或拖拽上传';
+      
+      if (xhr.status === 200) {
+        const d = JSON.parse(xhr.responseText);
+        d.success ? loadImages() : alert('上传失败：' + d.error);
+      } else if (xhr.status === 401) {
+        alert('请先登录');
+        location.reload();
+      } else {
+        alert('上传失败：网络错误');
+      }
+    });
+
+    // 上传失败/中断
+    xhr.addEventListener('error', () => {
+      uploadProgress.style.display = 'none';
+      uploadText.innerText = '点击或拖拽上传';
+      alert('上传失败：网络异常');
+    });
+
+    xhr.send(fd);
+  } catch (e) {
+    uploadProgress.style.display = 'none';
+    uploadText.innerText = '点击或拖拽上传';
+    alert('上传失败：' + e.message);
+  }
 }
 
-// 加载列表
+// 2. 加载图片列表
 async function loadImages(){
   selected.clear();
   updateSelUI();
   imagesEl.innerHTML='<div class="loading">加载中...</div>';
   try{
     const r = await fetch('/api/list');
-    if(r.status===401){alert('请登录');location.reload()}
+    if(r.status===401){alert('请先登录');location.reload()}
     const d = await r.json();
     if(d.success){
       allImages = d.data;
       renderPage();
       renderPages();
+    }else{
+      imagesEl.innerHTML='<div class="loading">暂无图片</div>'
     }
-  }catch(e){imagesEl.innerHTML='加载失败'}
+  }catch(e){
+    imagesEl.innerHTML='<div class="loading">加载失败，请刷新重试</div>'
+  }
 }
 
-// 渲染当前页（图片正常显示 + 复制自动用你的域名）
+// 3. 渲染当前页（图片显示 + 复制/下载按钮）
 function renderPage(){
   const start = (page-1)*pageSize;
   const list = allImages.slice(start, start+pageSize);
-  if(list.length===0){imagesEl.innerHTML='<div class="loading">暂无图片</div>';return}
+  if(list.length===0){imagesEl.innerHTML='<div class="loading">当前页无图片</div>';return}
 
   imagesEl.innerHTML = list.map(img=>{
     const urlObj = new URL(img.url);
@@ -133,6 +204,7 @@ function renderPage(){
           <div class="img-name">${img.name}</div>
           <div class="btn-group">
             <button class="copy-btn" onclick="copy('${copyUrl}')">复制链接</button>
+            <button class="download-btn" onclick="downloadImage('${img.url}', '${img.name}')">下载</button>
             <button class="delete-btn" onclick="delOne('${key}')">删除</button>
           </div>
         </div>
@@ -140,14 +212,18 @@ function renderPage(){
     `}).join('');
 }
 
-// 分页
+// 4. 分页
 function renderPages(){
   const total = Math.ceil(allImages.length/pageSize);
   paginationEl.innerHTML='';
+  
+  // 上一页
   const prev = document.createElement('button');
   prev.className='page-btn';prev.innerText='上一页';prev.disabled=page===1;
   prev.onclick=()=>{page--;renderPage();renderPages()};
   paginationEl.appendChild(prev);
+  
+  // 页码
   for(let i=1;i<=total;i++){
     const b=document.createElement('button');
     b.className='page-btn '+(i===page?'active':'');
@@ -155,24 +231,29 @@ function renderPages(){
     b.onclick=()=>{page=i;renderPage();renderPages()};
     paginationEl.appendChild(b);
   }
+  
+  // 下一页
   const next=document.createElement('button');
   next.className='page-btn';next.innerText='下一页';next.disabled=page===total||total===0;
   next.onclick=()=>{page++;renderPage();renderPages()};
   paginationEl.appendChild(next);
 }
 
-// 单选
+// 5. 单选/更新选中状态
 function toggleOne(key,checked){
   checked ? selected.add(key) : selected.delete(key);
   updateSelUI();
 }
 
 function updateSelUI(){
-  selCountEl.innerText = selected.size;
-  selected.size>0 ? batchDelBtn.classList.add('enabled') : batchDelBtn.classList.remove('enabled');
+  const count = selected.size;
+  selCountEl.innerText = count;
+  // 批量删除/下载按钮启用/禁用
+  count>0 ? batchDelBtn.classList.add('enabled') : batchDelBtn.classList.remove('enabled');
+  count>0 ? batchDownloadBtn.classList.add('enabled') : batchDownloadBtn.classList.remove('enabled');
 }
 
-// 全选当前页
+// 6. 全选当前页
 function doSelectAll(){
   const checked = selectAllBox.checked;
   const items = document.querySelectorAll('.img-card');
@@ -186,7 +267,7 @@ function doSelectAll(){
   updateSelUI();
 }
 
-// 复制：无弹窗，底部提示，自动用你的域名
+// 7. 复制链接（无弹窗 + 底部提示）
 function copy(url) {
   navigator.clipboard.writeText(url).then(()=>{
     copyToast.classList.add('show');
@@ -194,32 +275,90 @@ function copy(url) {
   });
 }
 
-// 删除单个
-async function delOne(key){
-  if(!confirm('确定删除？'))return;
-  await fetch('/api/delete',{
-    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key})
-  });
-  loadImages();
+// 8. 单张下载图片
+function downloadImage(url, fileName) {
+  // 创建下载链接
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName || 'r2-img.jpg';
+  a.target = '_blank';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
-// 批量删除
+// 9. 批量下载图片（逐个下载）
+async function batchDownload() {
+  const arr = Array.from(selected);
+  if(arr.length===0) return;
+  
+  if(!confirm(`确定下载选中的 ${arr.length} 张图片吗？`)) return;
+  
+  // 找到选中的图片URL和名称
+  const selectedImages = allImages.filter(img=>{
+    const key = new URL(img.url).pathname.replace(/^\//, '');
+    return arr.includes(key);
+  });
+  
+  // 逐个下载（避免浏览器拦截批量下载）
+  selectedImages.forEach((img, index) => {
+    // 延迟下载，防止被浏览器拦截
+    setTimeout(()=>{
+      downloadImage(img.url, img.name);
+    }, index * 500); // 每500ms下载一张
+  });
+  
+  alert(`开始下载 ${selectedImages.length} 张图片，请允许浏览器弹出下载窗口！`);
+}
+
+// 10. 删除单张图片
+async function delOne(key){
+  if(!confirm('确定删除这张图片吗？删除后无法恢复！'))return;
+  try{
+    const r = await fetch('/api/delete',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:key})
+    });
+    if(r.status===401){alert('请先登录');location.reload()}
+    loadImages();
+  }catch(e){
+    alert('删除失败：网络错误')
+  }
+}
+
+// 11. 批量删除
 async function batchDelete(){
   const arr = Array.from(selected);
   if(arr.length===0)return;
-  if(!confirm(`确定删除 ${arr.length} 张？`))return;
-  for(const k of arr) await fetch('/api/delete',{
-    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})
-  });
-  loadImages();
+  if(!confirm(`确定删除选中的 ${arr.length} 张图片吗？删除后无法恢复！`))return;
+  
+  try{
+    let success = 0, fail = 0;
+    for(const k of arr) {
+      const r = await fetch('/api/delete',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({key:k})
+      });
+      r.ok ? success++ : fail++;
+    }
+    alert(`批量删除完成！成功：${success} 张，失败：${fail} 张`);
+    loadImages();
+  }catch(e){
+    alert('批量删除失败：网络错误')
+  }
 }
 
-// 退出
+// 12. 退出登录
 function logout(){
-  document.cookie="img_bed_verified=;Path=/;Max-Age=0";
-  location.reload();
+  if(confirm('确定要退出登录吗？')){
+    document.cookie="img_bed_verified=;Path=/;Max-Age=0";
+    location.reload(true);
+  }
 }
 
+// 页面加载初始化
 window.onload = loadImages;
 </script>
 </body>
