@@ -19,13 +19,20 @@ body{max-width:1200px;margin:2rem auto;padding:0 1rem;background:#f8f9fa}
 .batch-download-btn{background:#0d6efd}
 .batch-delete-btn.enabled,.batch-download-btn.enabled{opacity:1;pointer-events:auto}
 
-/* 上传区域 + 进度条 */
+/* 上传区域 + 单文件进度条 */
 .upload-area{border:2px dashed #dee2e6;padding:3rem 2rem;text-align:center;border-radius:8px;margin-bottom:2rem;position:relative}
 #fileInput{display:none}
 .upload-btn{background:#0d6efd;color:white;border:none;padding:0.75rem 1.5rem;border-radius:6px;cursor:pointer}
-.upload-progress{width:80%;height:8px;background:#eee;border-radius:4px;margin:1rem auto;overflow:hidden;display:none}
-.progress-bar{height:100%;background:#0d6efd;width:0%;transition:width 0.3s}
 .upload-text{color:#6c757d;margin-bottom:1rem}
+/* 单文件进度列表 */
+.upload-files-list{width:80%;margin:1rem auto;text-align:left;display:none}
+.upload-file-item{margin:0.5rem 0;padding:0.5rem;border-radius:4px;background:#f8f9fa}
+.file-name{font-size:0.9rem;margin-bottom:0.3rem}
+.file-progress{width:100%;height:6px;background:#eee;border-radius:3px;overflow:hidden}
+.file-progress-bar{height:100%;background:#0d6efd;width:0%;transition:width 0.2s}
+.file-status{font-size:0.8rem;margin-top:0.3rem;color:#6c757d}
+.file-status.success{color:#28a745}
+.file-status.error{color:#dc3545}
 
 /* 图片列表 */
 .images{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1.5rem}
@@ -74,9 +81,8 @@ body{max-width:1200px;margin:2rem auto;padding:0 1rem;background:#f8f9fa}
 
   <div class="upload-area">
     <p class="upload-text">点击或拖拽上传</p>
-    <div class="upload-progress" id="uploadProgress">
-      <div class="progress-bar" id="progressBar"></div>
-    </div>
+    <!-- 单文件进度列表 -->
+    <div class="upload-files-list" id="uploadFilesList"></div>
     <input type="file" id="fileInput" multiple accept="image/*">
     <button class="upload-btn" onclick="document.getElementById('fileInput').click()">选择图片</button>
   </div>
@@ -96,8 +102,7 @@ const selCountEl = document.getElementById('selCount');
 const batchDelBtn = document.getElementById('batchDelBtn');
 const batchDownloadBtn = document.getElementById('batchDownloadBtn');
 const copyToast = document.getElementById('copyToast');
-const uploadProgress = document.getElementById('uploadProgress');
-const progressBar = document.getElementById('progressBar');
+const uploadFilesList = document.getElementById('uploadFilesList');
 const uploadText = document.querySelector('.upload-text');
 
 let allImages = [];
@@ -105,61 +110,118 @@ let page = 1;
 const pageSize = 20;
 let selected = new Set();
 
-// 1. 上传图片（带进度条）
+// 1. 上传图片（核心：单文件进度显示）
 fileInput.onchange = async e => {
   const files = Array.from(e.target.files);
   if (files.length === 0) return;
 
-  // 显示进度条
-  uploadProgress.style.display = 'block';
-  progressBar.style.width = '0%';
-  uploadText.innerText = `准备上传 ${files.length} 张图片...`;
+  // 清空并显示进度列表
+  uploadFilesList.innerHTML = '';
+  uploadFilesList.style.display = 'block';
+  uploadText.innerText = `正在上传 ${files.length} 张图片...`;
 
-  const fd = new FormData();
-  files.forEach(f => fd.append('file', f));
+  // 存储每个文件的上传状态
+  let uploadSuccessCount = 0;
+  let uploadFailCount = 0;
 
-  try {
-    // 创建带进度的请求
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/upload');
-    
-    // 监听上传进度
-    xhr.upload.addEventListener('progress', (e) => {
-      if (e.lengthComputable) {
-        const percent = (e.loaded / e.total) * 100;
-        progressBar.style.width = `${percent}%`;
-        uploadText.innerText = `上传中：${Math.round(percent)}%`;
-      }
-    });
+  // 逐个上传文件（保证单文件进度准确）
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const fileSize = (file.size / 1024 / 1024).toFixed(2); // MB
+    const fileId = `file-${i}-${Date.now()}`;
 
-    // 上传完成回调
-    xhr.addEventListener('load', () => {
-      uploadProgress.style.display = 'none';
-      uploadText.innerText = '点击或拖拽上传';
+    // 创建单文件进度项
+    const fileItem = document.createElement('div');
+    fileItem.className = 'upload-file-item';
+    fileItem.innerHTML = `
+      <div class="file-name">${file.name} (${fileSize}MB)</div>
+      <div class="file-progress">
+        <div class="file-progress-bar" id="${fileId}-progress"></div>
+      </div>
+      <div class="file-status" id="${fileId}-status">等待上传...</div>
+    `;
+    uploadFilesList.appendChild(fileItem);
+
+    // 创建FormData（单文件）
+    const fd = new FormData();
+    fd.append('file', file);
+
+    try {
+      // 创建带进度的XHR请求
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/upload');
+
+      // 监听单个文件的上传进度
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const percent = (e.loaded / e.total) * 100;
+          document.getElementById(`${fileId}-progress`).style.width = `${percent}%`;
+          document.getElementById(`${fileId}-status`).innerText = `上传中：${Math.round(percent)}%`;
+        }
+      });
+
+      // 单个文件上传完成
+      xhr.addEventListener('load', () => {
+        if (xhr.status === 200) {
+          const d = JSON.parse(xhr.responseText);
+          if (d.success) {
+            uploadSuccessCount++;
+            document.getElementById(`${fileId}-progress`).style.width = '100%';
+            document.getElementById(`${fileId}-status`).innerText = '上传成功 ✔';
+            document.getElementById(`${fileId}-status`).className = 'file-status success';
+          } else {
+            uploadFailCount++;
+            document.getElementById(`${fileId}-status`).innerText = `上传失败：${d.error}`;
+            document.getElementById(`${fileId}-status`).className = 'file-status error';
+          }
+        } else if (xhr.status === 401) {
+          uploadFailCount++;
+          document.getElementById(`${fileId}-status`).innerText = '上传失败：未登录';
+          document.getElementById(`${fileId}-status`).className = 'file-status error';
+        } else {
+          uploadFailCount++;
+          document.getElementById(`${fileId}-status`).innerText = '上传失败：网络错误';
+          document.getElementById(`${fileId}-status`).className = 'file-status error';
+        }
+
+        // 所有文件上传完成后刷新列表
+        if (uploadSuccessCount + uploadFailCount === files.length) {
+          setTimeout(() => {
+            uploadText.innerText = `上传完成：成功 ${uploadSuccessCount} 张，失败 ${uploadFailCount} 张`;
+            loadImages(); // 刷新图片列表
+            // 5秒后隐藏进度列表，恢复默认提示
+            setTimeout(() => {
+              uploadFilesList.style.display = 'none';
+              uploadText.innerText = '点击或拖拽上传';
+            }, 5000);
+          }, 500);
+        }
+      });
+
+      // 单个文件上传失败/中断
+      xhr.addEventListener('error', () => {
+        uploadFailCount++;
+        document.getElementById(`${fileId}-status`).innerText = '上传失败：网络异常';
+        document.getElementById(`${fileId}-status`).className = 'file-status error';
+        
+        if (uploadSuccessCount + uploadFailCount === files.length) {
+          uploadText.innerText = `上传完成：成功 ${uploadSuccessCount} 张，失败 ${uploadFailCount} 张`;
+          loadImages();
+        }
+      });
+
+      // 发送请求
+      xhr.send(fd);
+    } catch (e) {
+      uploadFailCount++;
+      document.getElementById(`${fileId}-status`).innerText = `上传失败：${e.message}`;
+      document.getElementById(`${fileId}-status`).className = 'file-status error';
       
-      if (xhr.status === 200) {
-        const d = JSON.parse(xhr.responseText);
-        d.success ? loadImages() : alert('上传失败：' + d.error);
-      } else if (xhr.status === 401) {
-        alert('请先登录');
-        location.reload();
-      } else {
-        alert('上传失败：网络错误');
+      if (uploadSuccessCount + uploadFailCount === files.length) {
+        uploadText.innerText = `上传完成：成功 ${uploadSuccessCount} 张，失败 ${uploadFailCount} 张`;
+        loadImages();
       }
-    });
-
-    // 上传失败/中断
-    xhr.addEventListener('error', () => {
-      uploadProgress.style.display = 'none';
-      uploadText.innerText = '点击或拖拽上传';
-      alert('上传失败：网络异常');
-    });
-
-    xhr.send(fd);
-  } catch (e) {
-    uploadProgress.style.display = 'none';
-    uploadText.innerText = '点击或拖拽上传';
-    alert('上传失败：' + e.message);
+    }
   }
 }
 
